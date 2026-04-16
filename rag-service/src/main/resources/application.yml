@@ -1,0 +1,31 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+rag:
+  opensearch:
+    url: ${RAG_OPENSEARCH_URL:http://localhost:9200}
+    index: ${RAG_OPENSEARCH_INDEX:chunks_cjk_v2}
+  postgres:
+    jdbc-url: ${RAG_POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/rag}
+    user: ${RAG_POSTGRES_USER:rag}
+    password: ${RAG_POSTGRES_PASSWORD:rag}
+  retrieval:
+    bm25-top-k: ${RAG_BM25_TOP_K:5}
+  ollama:
+    url: ${RAG_OLLAMA_URL:http://localhost:11434}
+    default-model: ${RAG_OLLAMA_DEFAULT_MODEL:qwen2.5:7b}
+    deep-model: ${RAG_OLLAMA_DEEP_MODEL:huihui_ai/deepseek-r1-abliterated:latest}
+    embedding-model: ${RAG_OLLAMA_EMBEDDING_MODEL:bge-m3}
+    embedding-dim: ${RAG_OLLAMA_EMBEDDING_DIM:1024}
+    timeout-seconds: ${RAG_OLLAMA_TIMEOUT_SECONDS:600}
+

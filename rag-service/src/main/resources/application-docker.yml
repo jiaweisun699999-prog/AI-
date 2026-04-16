@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: ${RAG_POSTGRES_JDBC_URL}
+    username: ${RAG_POSTGRES_USER}
+    password: ${RAG_POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+

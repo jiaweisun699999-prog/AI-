@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>金融研报智能问答（MVP）</title>
+    <style>
+      :root { color-scheme: light; }
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; margin: 0; background: #0b1220; color: #e8eefc; }
+      a { color: #8ab4ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 18px 60px; }
+      .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 16px; }
+      h1 { font-size: 20px; margin: 0 0 10px; }
+      .sub { opacity: .86; font-size: 13px; margin-bottom: 16px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      select, textarea, button, input {
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(0,0,0,0.25);
+        color: #e8eefc;
+        padding: 10px 12px;
+        outline: none;
+      }
+      textarea { width: 100%; min-height: 110px; resize: vertical; line-height: 1.5; }
+      button { cursor: pointer; background: #2b5cff; border-color: rgba(43,92,255,0.55); font-weight: 600; }
+      button:disabled { opacity: .6; cursor: not-allowed; }
+      .hint { font-size: 12px; opacity: .78; margin-top: 10px; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .pill { display: inline-flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.22); font-size: 12px; }
+      .kvs { display: flex; gap: 8px; flex-wrap: wrap; }
+      .answer { white-space: pre-wrap; line-height: 1.55; }
+      .cit { border-top: 1px solid rgba(255,255,255,0.10); padding-top: 12px; margin-top: 12px; }
+      .cit-item { padding: 10px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.18); }
+      .cit-title { font-weight: 700; margin-bottom: 6px; }
+      .cit-meta { font-size: 12px; opacity: .8; margin-bottom: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+      .muted { opacity: .8; }
+      .err { color: #ffb4b4; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>金融研报智能问答与分析（MVP）</h1>
+        <div class="sub">
+          当前版本：检索 + 引用溯源（下一步接入本地大模型生成与向量检索）。
+          <span class="muted">服务：</span>
+          <a href="/health" target="_blank" rel="noreferrer">/health</a>
+          · <a href="/debug/latest-chunks?domain=ashare" target="_blank" rel="noreferrer">/debug/latest-chunks</a>
+        </div>
+
+        <div class="row">
+          <label class="pill">
+            领域
+            <select id="domain">
+              <option value="ashare" selected>A股研报</option>
+            </select>
+          </label>
+          <label class="pill">
+            TopK
+            <input id="topk" type="number" min="1" max="20" value="5" style="width: 80px;" />
+          </label>
+          <label class="pill" title="开启后会使用更慢但更“深度”的模型">
+            深度分析
+            <input id="deep" type="checkbox" />
+          </label>
+          <span class="hint">示例问题：半导体研报的核心结论和风险是什么？</span>
+        </div>
+
+        <div style="margin-top: 12px;">
+          <textarea id="q" placeholder="输入你的问题…">半导体研报的核心结论和风险是什么？</textarea>
+        </div>
+
+        <div class="row" style="margin-top: 10px;">
+          <button id="askBtn">提问</button>
+          <span id="status" class="hint"></span>
+        </div>
+
+        <div class="grid">
+          <div class="card" style="padding: 14px;">
+            <div class="kvs">
+              <span class="pill"><span class="muted">API</span> <span class="mono">POST /ask</span></span>
+              <span class="pill"><span class="muted">返回</span> <span class="mono">answer + citations</span></span>
+            </div>
+            <div id="out" class="answer" style="margin-top: 10px;"></div>
+            <div id="cits" class="cit" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const statusEl = $("status");
+      const outEl = $("out");
+      const citsEl = $("cits");
+
+      function setStatus(msg, isErr=false) {
+        statusEl.textContent = msg || "";
+        statusEl.className = "hint" + (isErr ? " err" : "");
+      }
+
+      function escapeHtml(s) {
+        return (s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+      }
+
+      function render(resp) {
+        outEl.textContent = resp?.answer ?? "";
+        const cits = resp?.citations ?? [];
+        if (!cits.length) {
+          citsEl.style.display = "none";
+          citsEl.innerHTML = "";
+          return;
+        }
+        citsEl.style.display = "block";
+        citsEl.innerHTML =
+          "<div class='muted' style='margin-bottom:10px;'>引用片段（可溯源依据）</div>" +
+          cits.map((c, idx) => {
+            const meta = [
+              c.source ? `来源：${escapeHtml(c.source)}` : "",
+              c.publishTime ? `时间：${escapeHtml(c.publishTime)}` : "",
+              c.id ? `chunk_id：${escapeHtml(c.id)}` : ""
+            ].filter(Boolean).join(" · ");
+            const md = c.metadata ? `<div class="hint mono">${escapeHtml(JSON.stringify(c.metadata))}</div>` : "";
+            const url = c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noreferrer">原文链接</a>` : "";
+            return `
+              <div class="cit-item" style="margin-top:10px;">
+                <div class="cit-title">${idx+1}) ${escapeHtml(c.title || "（无标题）")}</div>
+                <div class="cit-meta">${escapeHtml(meta)} ${url ? " · " + url : ""}</div>
+                <div class="answer">${escapeHtml(c.snippet || "")}</div>
+                ${md}
+              </div>
+            `;
+          }).join("");
+      }
+
+      async function ask() {
+        const question = $("q").value.trim();
+        const domain = $("domain").value;
+        const topk = parseInt($("topk").value || "5", 10);
+        const deep = $("deep").checked;
+
+        if (!question) {
+          setStatus("请输入问题。", true);
+          return;
+        }
+
+        $("askBtn").disabled = true;
+        setStatus("请求中…");
+        outEl.textContent = "";
+        citsEl.style.display = "none";
+        citsEl.innerHTML = "";
+
+        try {
+          const resp = await fetch("/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question, domain, topK: topk, mode: deep ? "deep" : "fast" })
+          });
+          if (!resp.ok) {
+            const t = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${t}`);
+          }
+          const json = await resp.json();
+          render(json);
+          setStatus(`完成（citations: ${(json.citations || []).length}）`);
+        } catch (e) {
+          setStatus(e?.message || String(e), true);
+        } finally {
+          $("askBtn").disabled = false;
+        }
+      }
+
+      $("askBtn").addEventListener("click", ask);
+      $("q").addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask();
+      });
+    </script>
+  </body>
+</html>
+
