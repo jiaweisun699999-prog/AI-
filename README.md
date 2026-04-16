@@ -1,5 +1,7 @@
 # RAGANDBIADATE（MVP）
-
+## 项目运行示例
+<img width="765" height="1221" alt="image" src="https://github.com/user-attachments/assets/2c6ba0cd-dc5d-43cb-bbe8-a0a28b7a648d" />
+主要是导入研报进入分析系统，输入命令后解析到数据库，再靠ollama模型进行
 在 **Windows + Docker Desktop** 下可一键跑通的研报 RAG 最小实现：BM25 +（可选）向量混合检索，问答返回**可溯源引用片段**。
 
 ## 项目里有什么
